@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify Steam Deck Motion Service is working.
-Run this to see live motion data from your Steam Deck.
+Fixed test script for Steam Deck Motion Service
 """
 
 import socket
@@ -14,7 +13,7 @@ def test_motion_service(port=27760, duration=10):
     """Test the motion service by listening for UDP packets."""
     
     print(f"Steam Deck Motion Service Test")
-    print(f"Listening on UDP port {port} for {duration} seconds...")
+    print(f"Testing motion data from UDP port {port} for {duration} seconds...")
     print("Move your Steam Deck to see motion data!")
     print("-" * 60)
     
@@ -23,11 +22,14 @@ def test_motion_service(port=27760, duration=10):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(2.0)  # 2 second timeout
         
-        # Send a registration packet (any packet to register as client)
-        sock.sendto(b"register", ('localhost', port))
+        # Bind to any available port to receive responses
+        sock.bind(('', 0))  # Let system choose port
+        local_port = sock.getsockname()[1]
+        print(f"Client bound to local port: {local_port}")
         
-        # Bind to receive data
-        sock.bind(('', port + 1))  # Use different port for receiving
+        # Send registration packet to the service
+        print("Sending registration packet...")
+        sock.sendto(b"register", ('127.0.0.1', port))
         
         start_time = time.time()
         packet_count = 0
@@ -57,23 +59,24 @@ def test_motion_service(port=27760, duration=10):
                     
                     last_frame_id = frame_id
                     
-                    # Format timestamp
-                    dt = datetime.fromtimestamp(timestamp / 1_000_000)
-                    time_str = dt.strftime("%H:%M:%S.%f")[:-3]
-                    
-                    # Display data
-                    print(f"[{time_str}] Frame {frame_id:6d} | "
-                          f"Accel: X={accel.get('x', 0):6.3f} Y={accel.get('y', 0):6.3f} Z={accel.get('z', 0):6.3f} "
-                          f"(|{magnitude.get('accel', 0):5.3f}|) | "
-                          f"Gyro: P={gyro.get('pitch', 0):6.1f} Y={gyro.get('yaw', 0):6.1f} R={gyro.get('roll', 0):6.1f} "
-                          f"(|{magnitude.get('gyro', 0):5.1f}|)")
+                    # Display data (every 10th packet to avoid spam)
+                    if packet_count % 10 == 1:  # Show every 10th packet
+                        dt = datetime.fromtimestamp(timestamp / 1_000_000)
+                        time_str = dt.strftime("%H:%M:%S.%f")[:-3]
+                        
+                        print(f"[{time_str}] Frame {frame_id:6d} | "
+                              f"Accel: X={accel.get('x', 0):6.3f} Y={accel.get('y', 0):6.3f} Z={accel.get('z', 0):6.3f} "
+                              f"(|{magnitude.get('accel', 0):5.3f}|) | "
+                              f"Gyro: P={gyro.get('pitch', 0):6.1f} Y={gyro.get('yaw', 0):6.1f} R={gyro.get('roll', 0):6.1f} "
+                              f"(|{magnitude.get('gyro', 0):5.1f}|)")
                     
                 except json.JSONDecodeError as e:
                     print(f"❌ JSON decode error: {e}")
                     print(f"   Raw data: {data}")
                     
             except socket.timeout:
-                print("⏱️  No data received (timeout)")
+                print("⏱️  No data received (timeout) - sending another registration...")
+                sock.sendto(b"register", ('127.0.0.1', port))
                 continue
             except KeyboardInterrupt:
                 break

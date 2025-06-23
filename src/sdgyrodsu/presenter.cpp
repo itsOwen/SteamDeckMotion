@@ -1,9 +1,10 @@
 #include "sdgyrodsu/presenter.h"
-#include "sdgyrodsu/cemuhookadapter.h"
+#include "sdgyrodsu/motionadapter.h"
+#include "motion/simplemotion.h"
 
 #include <ncurses.h>
 
-using  namespace kmicki::cemuhook::protocol;
+using namespace kmicki::motion;
 
 namespace kmicki::sdgyrodsu
 {
@@ -18,7 +19,7 @@ namespace kmicki::sdgyrodsu
     {
         static int maxSpan = 0;
         static uint32_t lastInc;
-        static MotionData md;
+        static SimpleMotionData md;
         auto incSpan = frame.Increment-lastInc; 
 
         static float lastAccelRtL = 0;
@@ -30,7 +31,7 @@ namespace kmicki::sdgyrodsu
 
         lastInc = frame.Increment;
 
-        CemuhookAdapter::SetMotionData(frame,md,lastAccelRtL,lastAccelFtB,lastAccelTtB);
+        MotionAdapter::ConvertMotionData(frame, md, lastAccelRtL, lastAccelFtB, lastAccelTtB, frame.Increment);
 
         int k=0;
         move(++k,0); printw("INC  : %10d         ",frame.Increment);
@@ -50,13 +51,13 @@ namespace kmicki::sdgyrodsu
         move(++k,0); printw("U3   : %10d         ",frame.Unknown3);
         move(++k,0); printw("U4   : %10d         ",frame.Unknown4);        
         ++k;
-        move(++k,0); printw("A_X : %1.3f          ",md.accX);
-        move(++k,0); printw("A_Y : %1.3f          ",md.accY);
-        move(++k,0); printw("A_Z:  %1.3f          ",md.accZ);
+        move(++k,0); printw("A_X : %1.3f          ",md.accel_x);
+        move(++k,0); printw("A_Y : %1.3f          ",md.accel_y);
+        move(++k,0); printw("A_Z:  %1.3f          ",md.accel_z);
         ++k;
-        move(++k,0); printw("G_P : %3.1f          ",md.pitch);
-        move(++k,0); printw("G_Y : %3.1f          ",md.yaw);
-        move(++k,0); printw("G_R : %3.1f          ",md.roll);
+        move(++k,0); printw("G_P : %3.1f          ",md.gyro_pitch);
+        move(++k,0); printw("G_Y : %3.1f          ",md.gyro_yaw);
+        move(++k,0); printw("G_R : %3.1f          ",md.gyro_roll);
         ++k;
         move(++k,0); printw("Press any key to finish.");
 

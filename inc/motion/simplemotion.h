@@ -2,6 +2,7 @@
 #define _KMICKI_MOTION_SIMPLEMOTION_H_
 
 #include <cstdint>
+#include <string>
 
 namespace kmicki::motion
 {

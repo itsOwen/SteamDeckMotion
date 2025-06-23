@@ -6,6 +6,7 @@
 #include <thread>
 #include <netinet/in.h>
 #include <mutex>
+#include <shared_mutex>
 #include <vector>
 #include <chrono>
 
@@ -15,7 +16,7 @@ namespace kmicki::motion
     {
         public:
         JsonServer() = delete;
-        JsonServer(sdgyrodsu::MotionAdapter & _motionSource);
+        JsonServer(kmicki::sdgyrodsu::MotionAdapter & _motionSource);
         ~JsonServer();
 
         private:
@@ -40,7 +41,7 @@ namespace kmicki::motion
         int socketFd;
         int broadcastPort;
 
-        sdgyrodsu::MotionAdapter & motionSource;
+        kmicki::sdgyrodsu::MotionAdapter & motionSource;
         std::unique_ptr<std::thread> serverThread;
 
         void serverTask();

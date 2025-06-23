@@ -1,4 +1,6 @@
 #include "motion/jsonserver.h"
+#include "motion/simplemotion.h"
+#include "sdgyrodsu/motionadapter.h"
 #include "log/log.h"
 
 #include <sys/socket.h>
@@ -9,6 +11,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
+#include <shared_mutex>
 
 using namespace kmicki::sdgyrodsu;
 using namespace kmicki::log;
@@ -22,7 +25,7 @@ namespace kmicki::motion
         return inet_ntop(addr.sin_family, &(addr.sin_addr.s_addr), buf, INET6_ADDRSTRLEN);
     }
 
-    JsonServer::JsonServer(MotionAdapter & _motionSource)
+    JsonServer::JsonServer(kmicki::sdgyrodsu::MotionAdapter & _motionSource)
         : motionSource(_motionSource), stop(false), serverThread(), stopSending(false),
           mainMutex(), stopSendMutex(), socketSendMutex(), socketFd(-1)
     {

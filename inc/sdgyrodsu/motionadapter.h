@@ -1,51 +1,61 @@
+#ifndef _KMICKI_SDGYRODSU_MOTIONADAPTER_H_
+#define _KMICKI_SDGYRODSU_MOTIONADAPTER_H_
+
+#include <cstdint>
+#include <string>
+#include "sdhidframe.h"
 #include "motion/simplemotion.h"
-#include <cmath>
-#include <sstream>
-#include <iomanip>
+#include "hiddev/hiddevreader.h"
+#include "pipeline/serve.h"
+#include "pipeline/signalout.h"
 
-namespace kmicki::motion
+namespace kmicki::sdgyrodsu
 {
-    void CalculateMagnitudes(SimpleMotionData& data)
+    class MotionAdapter
     {
-        // Calculate acceleration magnitude
-        data.accel_magnitude = std::sqrt(
-            data.accel_x * data.accel_x + 
-            data.accel_y * data.accel_y + 
-            data.accel_z * data.accel_z
-        );
-        
-        // Calculate gyroscope magnitude  
-        data.gyro_magnitude = std::sqrt(
-            data.gyro_pitch * data.gyro_pitch + 
-            data.gyro_yaw * data.gyro_yaw + 
-            data.gyro_roll * data.gyro_roll
-        );
-    }
+        public:
+        MotionAdapter() = delete;
+        MotionAdapter(hiddev::HidDevReader & _reader, bool persistent = true);
 
-    std::string ToJson(const SimpleMotionData& data)
-    {
-        std::ostringstream json;
-        json << std::fixed << std::setprecision(4);
+        void StartFrameGrab();
         
-        json << "{"
-             << "\"timestamp\":" << data.timestamp << ","
-             << "\"accel\":{"
-             << "\"x\":" << data.accel_x << ","
-             << "\"y\":" << data.accel_y << ","
-             << "\"z\":" << data.accel_z
-             << "},"
-             << "\"gyro\":{"
-             << "\"pitch\":" << data.gyro_pitch << ","
-             << "\"yaw\":" << data.gyro_yaw << ","
-             << "\"roll\":" << data.gyro_roll
-             << "},"
-             << "\"frameId\":" << data.frame_id << ","
-             << "\"magnitude\":{"
-             << "\"accel\":" << data.accel_magnitude << ","
-             << "\"gyro\":" << data.gyro_magnitude
-             << "}"
-             << "}";
-             
-        return json.str();
-    }
+        // Get new motion data frame
+        // Returns true if new data is available
+        bool GetMotionData(kmicki::motion::SimpleMotionData &motionData);
+        
+        void StopFrameGrab();
+        bool IsControllerConnected();
+
+        // Static helper function for motion data conversion
+        static void ConvertMotionData(const SdHidFrame& frame, kmicki::motion::SimpleMotionData &data, 
+                                    float &lastAccelRtL, float &lastAccelFtB, float &lastAccelTtB,
+                                    uint32_t frameId);
+
+        pipeline::SignalOut NoGyro;
+
+        private:
+        bool ignoreFirst;
+        bool isPersistent;
+
+        kmicki::motion::SimpleMotionData data;
+        hiddev::HidDevReader & reader;
+
+        uint32_t lastInc;
+        uint64_t lastTimestamp;
+        uint32_t frameCounter;
+        
+        float lastAccelRtL;
+        float lastAccelFtB;
+        float lastAccelTtB;
+
+        int toReplicate;
+        int noGyroCooldown;
+
+        pipeline::Serve<hiddev::HidDevReader::frame_t> * frameServe;
+        
+        // Helper function
+        void ProcessFrame(const SdHidFrame& frame, kmicki::motion::SimpleMotionData &motionData);
+    };
 }
+
+#endif

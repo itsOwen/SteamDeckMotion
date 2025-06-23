@@ -101,10 +101,10 @@ int main()
     reader.SetStartMarker({ 0x01, 0x00, 0x09, 0x40 });
 
     // Create motion adapter and server
-    MotionAdapter adapter(reader);
+    kmicki::sdgyrodsu::MotionAdapter adapter(reader);
     reader.SetNoGyro(adapter.NoGyro);
     
-    JsonServer server(adapter);
+    kmicki::motion::JsonServer server(adapter);
 
     Log("Motion service started. Press Ctrl+C to stop.");
 

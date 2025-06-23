@@ -1,4 +1,5 @@
 #include "sdgyrodsu/motionadapter.h"
+#include "motion/simplemotion.h"
 #include "sdgyrodsu/sdhidframe.h"
 #include "log/log.h"
 
