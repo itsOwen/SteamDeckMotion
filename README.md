@@ -38,13 +38,6 @@ The service broadcasts JSON packets over UDP port **27760**:
 
 ## Installation
 
-### Method 1: Quick Install (Recommended)
-```bash
-# Download and run the installer
-curl -L https://github.com/yourusername/steamdeck-motion/releases/latest/download/install.sh | bash
-```
-
-### Method 2: Manual Installation
 1. Download the latest release package
 2. Extract to your desired location
 3. Run `./install.sh`
@@ -98,8 +91,8 @@ sudo pacman -S base-devel gcc glibc linux-api-headers ncurses systemd-libs hidap
 
 **Build:**
 ```bash
-git clone https://github.com/yourusername/steamdeck-motion.git
-cd steamdeck-motion
+git clone the repo
+cd into the repo
 make release
 ```
 
