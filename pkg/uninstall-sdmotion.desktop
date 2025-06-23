@@ -1,0 +1,8 @@
+[Desktop Entry]
+Exec=~/sdmotion/uninstall.sh
+Icon=delete
+Name[en_US]=Uninstall Motion Service
+Name=Uninstall Motion Service
+StartupNotify=false
+Terminal=true
+Type=Application

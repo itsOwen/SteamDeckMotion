@@ -1,11 +1,12 @@
-#include "sdgyrodsu/cemuhookadapter.h"
+#include "sdgyrodsu/motionadapter.h"
 #include "sdgyrodsu/sdhidframe.h"
 #include "log/log.h"
 
 #include <iostream>
 #include <iomanip>
+#include <chrono>
 
-using namespace kmicki::cemuhook::protocol;
+using namespace kmicki::motion;
 using namespace kmicki::log;
 
 #define SD_SCANTIME_US 4000
@@ -16,16 +17,6 @@ using namespace kmicki::log;
 
 namespace kmicki::sdgyrodsu
 {
-
-    MotionData CemuhookAdapter::GetMotionData(SdHidFrame const& frame, float &lastAccelRtL, float &lastAccelFtB, float &lastAccelTtB)
-    {
-        MotionData data;
-
-        SetMotionData(frame,data,lastAccelRtL,lastAccelFtB,lastAccelTtB);
-
-        return data;
-    }
-    
     float SmoothAccel(float &last, int16_t curr)
     {
         static const float acc1G = (float)ACC_1G;
@@ -40,41 +31,39 @@ namespace kmicki::sdgyrodsu
         return last/acc1G;
     }
 
-    MotionData & SetTimestamp(MotionData &data, uint64_t const& timestamp)
+    uint64_t GetCurrentTimestamp()
     {
-        data.timestampL = (uint32_t)(timestamp & 0xFFFFFFFF);
-        data.timestampH = (uint32_t)(timestamp >> 32);
-
-        return data;
+        auto now = std::chrono::steady_clock::now();
+        auto duration = now.time_since_epoch();
+        return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
     }
 
     uint64_t ToTimestamp(uint32_t const& increment)
     {
-        return (uint64_t)increment*SD_SCANTIME_US;
+        return (uint64_t)increment * SD_SCANTIME_US;
     }
 
-    MotionData &  SetTimestamp(MotionData &data, uint32_t const& increment)
+    void MotionAdapter::ConvertMotionData(const SdHidFrame& frame, SimpleMotionData &data, 
+                                        float &lastAccelRtL, float &lastAccelFtB, float &lastAccelTtB,
+                                        uint32_t frameId)
     {
-        SetTimestamp(data,ToTimestamp(increment));
-
-        return data;
-    }
-
-    void CemuhookAdapter::SetMotionData(SdHidFrame const& frame, MotionData &data, float &lastAccelRtL, float &lastAccelFtB, float &lastAccelTtB)
-    {
-        static const float acc1G = (float)ACC_1G;
         static const float gyro1dps = (float)GYRO_1DEGPERSEC;
 
-        SetTimestamp(data, frame.Increment);
+        data.timestamp = GetCurrentTimestamp();
+        data.frame_id = frameId;
         
-        data.accX = -SmoothAccel(lastAccelRtL,frame.AccelAxisRightToLeft);
-        data.accY = -SmoothAccel(lastAccelFtB,frame.AccelAxisFrontToBack);
-        data.accZ = SmoothAccel(lastAccelTtB,frame.AccelAxisTopToBottom);
+        // Convert accelerometer data (with smoothing)
+        data.accel_x = -SmoothAccel(lastAccelRtL, frame.AccelAxisRightToLeft);
+        data.accel_y = -SmoothAccel(lastAccelFtB, frame.AccelAxisFrontToBack);
+        data.accel_z = SmoothAccel(lastAccelTtB, frame.AccelAxisTopToBottom);
+        
+        // Convert gyroscope data
         if(frame.Header & 0xFF == 0xDD)
         {
-            data.pitch = 0.0f;
-            data.yaw = 0.0f;
-            data.roll = 0.0f;
+            // No gyro data available
+            data.gyro_pitch = 0.0f;
+            data.gyro_yaw = 0.0f;
+            data.gyro_roll = 0.0f;
         }
         else 
         {
@@ -82,6 +71,7 @@ namespace kmicki::sdgyrodsu
             auto gyroFtB = frame.GyroAxisFrontToBack;
             auto gyroTtB = frame.GyroAxisTopToBottom;
 
+            // Apply deadzone
             if(gyroRtL < GYRO_DEADZONE && gyroRtL > -GYRO_DEADZONE)
                 gyroRtL = 0;
             if(gyroFtB < GYRO_DEADZONE && gyroFtB > -GYRO_DEADZONE)
@@ -89,35 +79,43 @@ namespace kmicki::sdgyrodsu
             if(gyroTtB < GYRO_DEADZONE && gyroTtB > -GYRO_DEADZONE)
                 gyroTtB = 0;
 
-            data.pitch = (float)gyroRtL/gyro1dps;
-            data.yaw = -(float)gyroFtB/gyro1dps;
-            data.roll = (float)gyroTtB/gyro1dps;
+            data.gyro_pitch = (float)gyroRtL / gyro1dps;
+            data.gyro_yaw = -(float)gyroFtB / gyro1dps;
+            data.gyro_roll = (float)gyroTtB / gyro1dps;
         }
+        
+        // Calculate magnitudes
+        CalculateMagnitudes(data);
     }
 
-    CemuhookAdapter::CemuhookAdapter(hiddev::HidDevReader & _reader, bool persistent)
+    MotionAdapter::MotionAdapter(hiddev::HidDevReader & _reader, bool persistent)
     : reader(_reader),
-      lastInc(0),
-      lastAccelRtL(0.0),lastAccelFtB(0.0),lastAccelTtB(0.0),
-      isPersistent(persistent), toReplicate(0), noGyroCooldown(0)
+      lastInc(0), frameCounter(0),
+      lastAccelRtL(0.0), lastAccelFtB(0.0), lastAccelTtB(0.0),
+      isPersistent(persistent), toReplicate(0), noGyroCooldown(0),
+      frameServe(nullptr)
     {
-        Log("CemuhookAdapter: Initialized. Waiting for start of frame grab.",LogLevelDebug);
+        Log("MotionAdapter: Initialized. Waiting for start of frame grab.", LogLevelDebug);
     }
 
-    void CemuhookAdapter::StartFrameGrab()
+    void MotionAdapter::StartFrameGrab()
     {
         lastInc = 0;
+        frameCounter = 0;
         ignoreFirst = true;
-        Log("CemuhookAdapter: Starting frame grab.",LogLevelDebug);
+        Log("MotionAdapter: Starting frame grab.", LogLevelDebug);
         reader.Start();
         frameServe = &reader.GetServe();
     }
 
-    int const& CemuhookAdapter::SetMotionDataNewFrame(MotionData &motion)
+    bool MotionAdapter::GetMotionData(SimpleMotionData &motionData)
     {
         static const int64_t cMaxDiffReplicate = 100;
         static const int cNoGyroCooldownFrames = 1000;
         static const int cMaxRepeatedLoop = 1000;
+
+        if(frameServe == nullptr)
+            return false;
 
         if(noGyroCooldown > 0) --noGyroCooldown;
 
@@ -135,11 +133,10 @@ namespace kmicki::sdgyrodsu
         {
             if(toReplicate == 0)
             {
-                //Log("DEBUG: TRY GET CONSUME LOCK.");
                 auto lock = frameServe->GetConsumeLock();
-                //Log("CONSUME LOCK ACQUIRED.");
                 auto const& frame = GetSdFrame(*dataFrame);
 
+                // Check for gyro malfunction (all zeros)
                 if( noGyroCooldown <= 0
                     &&  frame.AccelAxisFrontToBack == 0 && frame.AccelAxisRightToLeft == 0 
                     &&  frame.AccelAxisTopToBottom == 0 && frame.GyroAxisFrontToBack == 0 
@@ -155,14 +152,14 @@ namespace kmicki::sdgyrodsu
                 {
                     if(repeatedLoop == cMaxRepeatedLoop)
                     {
-                        Log("CemuhookAdapter: Frame was repeated. Ignoring...",LogLevelDebug);
+                        Log("MotionAdapter: Frame was repeated. Ignoring...", LogLevelDebug);
                         { LogF(LogLevelTrace) << std::setw(8) << std::setfill('0') << std::setbase(16)
                                         << "Current increment: 0x" << frame.Increment << ". Last: 0x" << lastInc << "."; }
                     }
                     if(repeatedLoop <= 0)
                     {
-                        Log("CemuhookAdapter: Frame is repeated continously...");
-                        return toReplicate;
+                        Log("MotionAdapter: Frame is repeated continuously...");
+                        return false;
                     }
                     --repeatedLoop;
                 }
@@ -171,7 +168,7 @@ namespace kmicki::sdgyrodsu
                     if(lastInc != 0 && diff > 1)
                     {
                         LogF logMsg((diff > 6)?LogLevelDefault:LogLevelDebug);
-                        logMsg << "CemuhookAdapter: Missed " << (diff-1) << " frames.";
+                        logMsg << "MotionAdapter: Missed " << (diff-1) << " frames.";
                         if(diff > 1000)
                             { LogF(LogLevelTrace) << std::setw(8) << std::setfill('0') << std::setbase(16)
                                      << "Current increment: 0x" << frame.Increment << ". Last: 0x" << lastInc << "."; }
@@ -182,19 +179,18 @@ namespace kmicki::sdgyrodsu
                         }
                     }
 
-                    SetMotionData(frame,motion,lastAccelRtL,lastAccelFtB,lastAccelTtB);
-
+                    ProcessFrame(frame, motionData);
+                    
                     if(toReplicate > 0)
                     {
                         lastTimestamp = ToTimestamp(lastInc+1);
-                        SetTimestamp(motion,lastTimestamp);
+                        motionData.timestamp = lastTimestamp;
                         if(!isPersistent)
-                            data = motion;
+                            data = motionData;
                     }
                         
                     lastInc = frame.Increment;
-                    
-                    return toReplicate;
+                    return true;
                 }
             }
             else
@@ -204,25 +200,36 @@ namespace kmicki::sdgyrodsu
                 lastTimestamp += SD_SCANTIME_US;
                 if(!isPersistent)
                 {
-                    motion = SetTimestamp(data,lastTimestamp);
+                    motionData = data;
+                    motionData.timestamp = lastTimestamp;
                 }
                 else
-                    SetTimestamp(motion,lastTimestamp);
+                {
+                    motionData.timestamp = lastTimestamp;
+                }
 
-                return toReplicate;
+                return true;
             }
         }
     }
 
-    void CemuhookAdapter::StopFrameGrab()
+    void MotionAdapter::ProcessFrame(const SdHidFrame& frame, SimpleMotionData &motionData)
     {
-        Log("CemuhookAdapter: Stopping frame grab.",LogLevelDebug);
-        reader.StopServe(*frameServe);
-        frameServe = nullptr;
+        ConvertMotionData(frame, motionData, lastAccelRtL, lastAccelFtB, lastAccelTtB, ++frameCounter);
+    }
+
+    void MotionAdapter::StopFrameGrab()
+    {
+        Log("MotionAdapter: Stopping frame grab.", LogLevelDebug);
+        if(frameServe != nullptr)
+        {
+            reader.StopServe(*frameServe);
+            frameServe = nullptr;
+        }
         reader.Stop();
     }
 
-    bool CemuhookAdapter::IsControllerConnected()
+    bool MotionAdapter::IsControllerConnected()
     {
         return true;
     }

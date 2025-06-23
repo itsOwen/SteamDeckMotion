@@ -35,9 +35,9 @@ RELEASE = release
 # 		main name for debug build artifacts
 DEBUG = debug
 # 		main name for the application/executable
-EXENAME = sdgyrodsu
+EXENAME = sdmotion
 # 		main name for the binary package
-PKGNAME = SteamDeckGyroDSUSetup
+PKGNAME = SteamDeckMotionSetup
 #		name of symbolic link to release binary
 SYMRELEASE = launch
 #		name of symbolic link to debug binary
@@ -75,7 +75,7 @@ INSTALLSCRIPT = install.sh
 PREPARESCRIPT = scripts/prepare.sh
 
 #	Dependency check (Steam Deck)
-#	Some libraries have to be reinstalled on Steam Deck because haeder files are missing
+#	Some libraries have to be reinstalled on Steam Deck because header files are missing
 
 # 	Check files - these files existence will be checked to determine if 
 #	the corresponding dependency is properly installed
@@ -116,7 +116,7 @@ PKGPREPDIR = $(PKGBINDIR)/$(PKGNAME)
 DEBUGPATH = $(DEBUGDIR)/$(EXENAME)
 # 		path for release build's executable
 RELEASEPATH = $(RELEASEDIR)/$(EXENAME)
-# 		inary package file name
+# 		binary package file name
 PKGBIN = $(PKGNAME).zip
 # 		path for binary package
 PKGBINPATH = $(PKGBINDIR)/$(PKGBIN)
